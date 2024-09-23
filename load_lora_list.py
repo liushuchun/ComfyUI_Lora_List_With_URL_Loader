@@ -9,18 +9,21 @@ from pathlib import Path  # 用于处理文件路径
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 import json
 from typing import Dict
-from nodes import LoraLoader
 
-class AVLoraLoader(LoraLoader):
+
+    
+class LoraListStacker:
     @classmethod
     def INPUT_TYPES(s):
-        inputs = LoraLoader.INPUT_TYPES()
-        inputs["optional"] = {
-            "lora_override": ("STRING", {"default": "None"}),
-            "enabled": ("BOOLEAN", {"default": True}),
+        return {
+            "required": {
+                "data": ("STRING", {"default": "", "multiline": True, "dynamicPrompts": False}),
+            },
+            "optional": {"lora_stack": ("LORA_STACK",)},
         }
-        return inputs
 
+    RETURN_TYPES = ("LORA_STACK",)
+    FUNCTION = "load_list_lora"
     CATEGORY = "Liushuchun /Loaders"
 
     def download_file(self, url, save_path):
@@ -41,9 +44,10 @@ class AVLoraLoader(LoraLoader):
         """如果lora_name是URL，检测并下载模型文件"""
         if lora_name.startswith("http"):
             filename = self.get_lora_filename(lora_name)
-            local_path = os.path.join(folder_paths.get_folder("loras"), filename)
-
-            if not os.path.exists(local_path):
+            local_path =   folder_paths.get_full_path("loras", filename)
+            print("local path",local_path)
+            
+            if local_path!="NoneType" or local_path is None or not os.path.exists(local_path):
                 print(f"File {filename} not found locally. Downloading...")
                 if not self.download_file(lora_name, local_path):
                     raise Exception(f"Failed to download Lora model from {lora_name}")
@@ -52,22 +56,47 @@ class AVLoraLoader(LoraLoader):
             return filename
         return lora_name
 
-    def load_lora(self, model, clip, lora_name, *args, lora_override="None", enabled=True, **kwargs):
-        if not enabled:
-            return (model, clip)
+    def parse_lora_list(self, data: str):
+        # data is a list of lora model (lora_name, strength_model, strength_clip, url) in json format
+        # trim data
+        data = data.strip()
+        if data == "" or data == "[]" or data is None:
+            return []
 
-        if lora_override != "None":
-            if lora_override not in folder_paths.get_filename_list("loras"):
-                print(f"Warning: Not found Lora model {lora_override}. Using {lora_name} instead.")
-            else:
-                lora_name = lora_override
+        print(f"Loading lora list: {data}")
 
-        # 检查并下载 Lora 模型文件（如果需要）
-        lora_name = self.check_and_download_lora(lora_name)
+        lora_list = json.loads(data)
+        if len(lora_list) == 0:
+            return []
 
-        return super().load_lora(model, clip, lora_name, *args, **kwargs)
+        available_loras = folder_paths.get_filename_list("loras")
 
-class LoraListUrlLoader(AVLoraLoader):
+        lora_params = []
+        for lora in lora_list:
+            lora_name = lora["name"]
+            strength_model = lora["strength"]
+            strength_clip = lora["strength"]
+
+            if strength_model == 0 and strength_clip == 0:
+                continue
+
+            if lora_name not in available_loras:
+                print(f"Not found lora {lora_name}, skipping")
+                continue
+
+            lora_params.append((lora_name, strength_model, strength_clip))
+
+        return lora_params
+
+    def load_list_lora(self, data, lora_stack=None):
+        loras = self.parse_lora_list(data)
+
+        if lora_stack is not None:
+            loras.extend([l for l in lora_stack if l[0] != "None"])
+
+        return (loras,)
+
+class LoraListUrlLoader(LoraListStacker):
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -92,15 +121,15 @@ class LoraListUrlLoader(AVLoraLoader):
                        lora_name2, model_strength_2, clip_strength_2,
                        lora_name3, model_strength_3, clip_strength_3):
         loras = []
-        if lora_name1 != "None":
+        if lora_name1 != "":
             lora_name1 = self.check_and_download_lora(lora_name1)
             loras.append((lora_name1, model_strength_1, clip_strength_1))
 
-        if lora_name2 != "None":
+        if lora_name2 != "":
             lora_name2 = self.check_and_download_lora(lora_name2)
             loras.append((lora_name2, model_strength_2, clip_strength_2))
 
-        if lora_name3 != "None":
+        if lora_name3 != "":
             lora_name3 = self.check_and_download_lora(lora_name3)
             loras.append((lora_name3, model_strength_3, clip_strength_3))
 
