@@ -14,7 +14,12 @@ This plugin allows you to load LoRA models from a custom list, or automatically 
    cd custom_nodes
    ```
 2. Clone the repository:
-```
+```bash
 git clone https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader.git
 ```
-3. Restart ComfyUI to apply the changes.
+3. install the dependencies:
+```bash
+   pip install -r requirements.txt
+```
+
+4.  Restart ComfyUI to apply the changes.
