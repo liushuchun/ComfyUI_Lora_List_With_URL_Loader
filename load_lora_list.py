@@ -2,58 +2,14 @@ import comfy.sd
 import torch
 import os
 import sys
-import hashlib
-import requests
-import json
-from typing import Dict
 import folder_paths
-from nodes import LoraLoader, VAELoader
+import wget  # 引入 wget 模块
+from pathlib import Path  # 用于处理文件路径
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
-
-
-def download_file(url, dest):
-    """Download file from URL to the destination."""
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        with open(dest, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return True
-    except Exception as e:
-        print(f"Error downloading {url}: {e}")
-        return False
-
-
-def file_md5(file_path):
-    """Calculate the MD5 checksum of a file."""
-    if not os.path.exists(file_path):
-        return None
-    hash_md5 = hashlib.md5()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
-
-
-def validate_lora(lora_name, lora_url="", md5_checksum=""):
-    """Check if LoRA is available locally, otherwise download it and validate via MD5."""
-    lora_path = folder_paths.get_full_path("loras", lora_name)
-    if not os.path.exists(lora_path):
-        if lora_url:
-            print(f"{lora_name} not found locally, downloading from {lora_url}...")
-            if not download_file(lora_url, lora_path):
-                print(f"Failed to download {lora_name}")
-                return None
-            if md5_checksum and file_md5(lora_path) != md5_checksum:
-                print(f"MD5 mismatch for {lora_name}. Downloaded file does not match expected checksum.")
-                return None
-        else:
-            print(f"{lora_name} not found and no URL provided.")
-            return None
-    return lora_path
-
+import json
+from typing import Dict
+from nodes import LoraLoader
 
 class AVLoraLoader(LoraLoader):
     @classmethod
@@ -61,88 +17,60 @@ class AVLoraLoader(LoraLoader):
         inputs = LoraLoader.INPUT_TYPES()
         inputs["optional"] = {
             "lora_override": ("STRING", {"default": "None"}),
-            "lora_url": ("STRING", {"default": ""}),  # 新增URL字段
-            "md5_checksum": ("STRING", {"default": ""}),  # MD5校验
             "enabled": ("BOOLEAN", {"default": True}),
         }
         return inputs
 
     CATEGORY = "Art Venture/Loaders"
 
-    def load_lora(self, model, clip, lora_name, *args, lora_override="None", lora_url="", md5_checksum="", enabled=True, **kwargs):
+    def download_file(self, url, save_path):
+        """使用 wget 下载文件"""
+        try:
+            wget.download(url, save_path)
+            print(f"\nDownloaded: {save_path}")
+        except Exception as e:
+            print(f"Failed to download {url}: {e}")
+            return False
+        return True
+
+    def get_lora_filename(self, lora_name):
+        """从URL提取文件名"""
+        return os.path.basename(lora_name)
+
+    def check_and_download_lora(self, lora_name):
+        """如果lora_name是URL，检测并下载模型文件"""
+        if lora_name.startswith("http"):
+            filename = self.get_lora_filename(lora_name)
+            local_path = os.path.join(folder_paths.get_folder("loras"), filename)
+
+            if not os.path.exists(local_path):
+                print(f"File {filename} not found locally. Downloading...")
+                if not self.download_file(lora_name, local_path):
+                    raise Exception(f"Failed to download Lora model from {lora_name}")
+            else:
+                print(f"File {filename} already exists locally.")
+            return filename
+        return lora_name
+
+    def load_lora(self, model, clip, lora_name, *args, lora_override="None", enabled=True, **kwargs):
         if not enabled:
             return (model, clip)
 
         if lora_override != "None":
-            lora_name = lora_override
+            if lora_override not in folder_paths.get_filename_list("loras"):
+                print(f"Warning: Not found Lora model {lora_override}. Using {lora_name} instead.")
+            else:
+                lora_name = lora_override
 
-        lora_path = validate_lora(lora_name, lora_url, md5_checksum)
-        if not lora_path:
-            return (model, clip)
+        # 检查并下载 Lora 模型文件（如果需要）
+        lora_name = self.check_and_download_lora(lora_name)
 
         return super().load_lora(model, clip, lora_name, *args, **kwargs)
 
-
-class LoraListStacker:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "data": ("STRING", {"default": "", "multiline": True, "dynamicPrompts": False}),
-            },
-            "optional": {"lora_stack": ("LORA_STACK",)},
-        }
-
-    RETURN_TYPES = ("LORA_STACK",)
-    FUNCTION = "load_list_lora"
-    CATEGORY = "Art Venture/Loaders"
-
-    def parse_lora_list(self, data: str):
-        """Parse a list of LoRA models from JSON format."""
-        data = data.strip()
-        if data == "" or data == "[]" or data is None:
-            return []
-
-        print(f"Loading lora list: {data}")
-
-        lora_list = json.loads(data)
-        if len(lora_list) == 0:
-            return []
-
-        available_loras = folder_paths.get_filename_list("loras")
-
-        lora_params = []
-        for lora in lora_list:
-            lora_name = lora["name"]
-            strength_model = lora["strength"]
-            strength_clip = lora["strength"]
-
-            if strength_model == 0 and strength_clip == 0:
-                continue
-
-            if lora_name not in available_loras:
-                print(f"Not found lora {lora_name}, skipping")
-                continue
-
-            lora_params.append((lora_name, strength_model, strength_clip))
-
-        return lora_params
-
-    def load_list_lora(self, data, lora_stack=None):
-        loras = self.parse_lora_list(data)
-
-        if lora_stack is not None:
-            loras.extend([l for l in lora_stack if l[0] != "None"])
-
-        return (loras,)
-
-
-class LoraListUrlLoader(LoraListStacker):
-
+class LoraListUrlLoader(AVLoraLoader):
     @classmethod
     def INPUT_TYPES(s):
         lora_files = ["None"] + folder_paths.get_filename_list("loras")
-
         return {
             "required": {
                 "model": ("MODEL",),
@@ -165,29 +93,29 @@ class LoraListUrlLoader(LoraListStacker):
                        lora_name2, model_strength_2, clip_strength_2,
                        lora_name3, model_strength_3, clip_strength_3):
         loras = []
+        if lora_name1 != "None":
+            lora_name1 = self.check_and_download_lora(lora_name1)
+            loras.append((lora_name1, model_strength_1, clip_strength_1))
 
-        for lora_name, model_strength, clip_strength in [(lora_name1, model_strength_1, clip_strength_1),
-                                                         (lora_name2, model_strength_2, clip_strength_2),
-                                                         (lora_name3, model_strength_3, clip_strength_3)]:
-            if lora_name != "None":
-                lora_path = validate_lora(lora_name)
-                if lora_path:
-                    loras.append((lora_name, model_strength, clip_strength))
+        if lora_name2 != "None":
+            lora_name2 = self.check_and_download_lora(lora_name2)
+            loras.append((lora_name2, model_strength_2, clip_strength_2))
+
+        if lora_name3 != "None":
+            lora_name3 = self.check_and_download_lora(lora_name3)
+            loras.append((lora_name3, model_strength_3, clip_strength_3))
 
         if len(loras) == 0:
             return (model, clip)
 
-        # Load LoRAs
-        return self.load_loras(loras, model, clip)
+        def load_loras(lora_params, model, clip):
+            for lora_name, strength_model, strength_clip in lora_params:
+                lora_path = folder_paths.get_full_path("loras", lora_name)
+                lora_file = comfy.utils.load_torch_file(lora_path)
+                model, clip = comfy.sd.load_lora_for_models(model, clip, lora_file, strength_model, strength_clip)
+            return model, clip
 
-    def load_loras(self, lora_params, model, clip):
-        """Load the LoRA models into the model and clip."""
-        for lora_name, strength_model, strength_clip in lora_params:
-            lora_path = folder_paths.get_full_path("loras", lora_name)
-            lora_file = comfy.utils.load_torch_file(lora_path)
-            model, clip = comfy.sd.load_lora_for_models(model, clip, lora_file, strength_model, strength_clip)
-        return model, clip
-
+        return load_loras(loras, model, clip)
 
 NODE_CLASS_MAPPINGS = {
     "LoraListUrlLoader": LoraListUrlLoader,
