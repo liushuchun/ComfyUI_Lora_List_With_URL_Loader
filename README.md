@@ -1,13 +1,20 @@
+# Lora List with URL Loader
 
-# Lora List With Url Loader
+This plugin allows you to load LoRA models from a custom list, or automatically fetch them from Civitai if they are missing locally. Key features include:
 
-- load url lora list  from your own list or auto fetch them on civitai if they are missing.
-- Force fetch (not in the screenshot) if you want to force a refresh.
-- It uses the sha256 hash so you can rename the file as you like.
+- **URL-based LoRA Loading**: Load LoRA models directly from URLs specified in your list.
+- **Auto Fetch**: If a LoRA model is not found locally, it can be fetched automatically from Civitai.
+- **Force Refresh**: (Not shown in the screenshot) You can force re-download and update the models even if they exist.
+- **Flexible Renaming**: Uses SHA-256 hashing to validate the files, allowing you to rename them freely without breaking functionality.
 
+## Installation
 
-# Installation
-
-1. cd custom_nodes
-2. git clone https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader.git
-3. Restart ComfyUI
+1. Navigate to the `custom_nodes` directory in your ComfyUI installation:
+   ```bash
+   cd custom_nodes
+   ```
+2. Clone the repository:
+```
+git clone https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader.git
+```
+3. Restart ComfyUI to apply the changes.

@@ -1,136 +1,197 @@
-import folder_paths
-from comfy.sd import load_lora_for_models
-from comfy.utils import load_torch_file
+import comfy.sd
+import torch
+import os
+import sys
 import hashlib
 import requests
 import json
+from typing import Dict
+import folder_paths
+from nodes import LoraLoader, VAELoader
 
-def load_json_from_file(file_path):
-    try:
-        with open(file_path, 'r') as json_file:
-            data = json.load(json_file)
-            return data
-    except FileNotFoundError:
-        print(f"File not found: {file_path}")
-        return None
-    except json.JSONDecodeError:
-        print(f"Error decoding JSON in file: {file_path}")
-        return None
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 
-def save_dict_to_json(data_dict, file_path):
+
+def download_file(url, dest):
+    """Download file from URL to the destination."""
     try:
-        with open(file_path, 'w') as json_file:
-            json.dump(data_dict, json_file, indent=4)
-            print(f"Data saved to {file_path}")
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(dest, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        return True
     except Exception as e:
-        print(f"Error saving JSON to file: {e}")
+        print(f"Error downloading {url}: {e}")
+        return False
 
-def get_model_version_info(hash_value):
-    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{hash_value}"
-    response = requests.get(api_url)
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
+
+def file_md5(file_path):
+    """Calculate the MD5 checksum of a file."""
+    if not os.path.exists(file_path):
         return None
-    
-def calculate_sha256(file_path):
-    sha256_hash = hashlib.sha256()
+    hash_md5 = hashlib.md5()
     with open(file_path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(chunk)
-    return sha256_hash.hexdigest()
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
-class LoraListUrlLoader:
-    def __init__(self):
-        self.loaded_lora = None
+
+def validate_lora(lora_name, lora_url="", md5_checksum=""):
+    """Check if LoRA is available locally, otherwise download it and validate via MD5."""
+    lora_path = folder_paths.get_full_path("loras", lora_name)
+    if not os.path.exists(lora_path):
+        if lora_url:
+            print(f"{lora_name} not found locally, downloading from {lora_url}...")
+            if not download_file(lora_url, lora_path):
+                print(f"Failed to download {lora_name}")
+                return None
+            if md5_checksum and file_md5(lora_path) != md5_checksum:
+                print(f"MD5 mismatch for {lora_name}. Downloaded file does not match expected checksum.")
+                return None
+        else:
+            print(f"{lora_name} not found and no URL provided.")
+            return None
+    return lora_path
+
+
+class AVLoraLoader(LoraLoader):
+    @classmethod
+    def INPUT_TYPES(s):
+        inputs = LoraLoader.INPUT_TYPES()
+        inputs["optional"] = {
+            "lora_override": ("STRING", {"default": "None"}),
+            "lora_url": ("STRING", {"default": ""}),  # 新增URL字段
+            "md5_checksum": ("STRING", {"default": ""}),  # MD5校验
+            "enabled": ("BOOLEAN", {"default": True}),
+        }
+        return inputs
+
+    CATEGORY = "Art Venture/Loaders"
+
+    def load_lora(self, model, clip, lora_name, *args, lora_override="None", lora_url="", md5_checksum="", enabled=True, **kwargs):
+        if not enabled:
+            return (model, clip)
+
+        if lora_override != "None":
+            lora_name = lora_override
+
+        lora_path = validate_lora(lora_name, lora_url, md5_checksum)
+        if not lora_path:
+            return (model, clip)
+
+        return super().load_lora(model, clip, lora_name, *args, **kwargs)
+
+
+class LoraListStacker:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "data": ("STRING", {"default": "", "multiline": True, "dynamicPrompts": False}),
+            },
+            "optional": {"lora_stack": ("LORA_STACK",)},
+        }
+
+    RETURN_TYPES = ("LORA_STACK",)
+    FUNCTION = "load_list_lora"
+    CATEGORY = "Art Venture/Loaders"
+
+    def parse_lora_list(self, data: str):
+        """Parse a list of LoRA models from JSON format."""
+        data = data.strip()
+        if data == "" or data == "[]" or data is None:
+            return []
+
+        print(f"Loading lora list: {data}")
+
+        lora_list = json.loads(data)
+        if len(lora_list) == 0:
+            return []
+
+        available_loras = folder_paths.get_filename_list("loras")
+
+        lora_params = []
+        for lora in lora_list:
+            lora_name = lora["name"]
+            strength_model = lora["strength"]
+            strength_clip = lora["strength"]
+
+            if strength_model == 0 and strength_clip == 0:
+                continue
+
+            if lora_name not in available_loras:
+                print(f"Not found lora {lora_name}, skipping")
+                continue
+
+            lora_params.append((lora_name, strength_model, strength_clip))
+
+        return lora_params
+
+    def load_list_lora(self, data, lora_stack=None):
+        loras = self.parse_lora_list(data)
+
+        if lora_stack is not None:
+            loras.extend([l for l in lora_stack if l[0] != "None"])
+
+        return (loras,)
+
+
+class LoraListUrlLoader(LoraListStacker):
 
     @classmethod
     def INPUT_TYPES(s):
-        LORA_LIST = sorted(folder_paths.get_filename_list("loras"), key=str.lower)
-        return {"required": { "model": ("MODEL",),
-                              "clip": ("CLIP", ),
-                              "lora_name": (LORA_LIST, ),
-                              "strength_model": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1}),
-                              "strength_clip": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1}),
-                              "query_tags": ("BOOLEAN", {"default": True}),
-                              "tags_out": ("BOOLEAN", {"default": True}),
-                              "print_tags": ("BOOLEAN", {"default": False}),
-                              "bypass": ("BOOLEAN", {"default": False}),
-                              "force_fetch": ("BOOLEAN", {"default": False}),
-                              },
-                "optional":
-                            {
-                                "opt_prompt": ("STRING", {"forceInput": True}),
-                            }
-                }
-    
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING")
-    FUNCTION = "load_lora"
-    CATEGORY = "loaders"
+        lora_files = ["None"] + folder_paths.get_filename_list("loras")
 
-    def load_lora(self, model, clip, lora_name, strength_model, strength_clip, query_tags, tags_out, print_tags, bypass, force_fetch, opt_prompt=None):
-        if strength_model == 0 and strength_clip == 0 or bypass:
-            if opt_prompt is not None:
-                out_string = opt_prompt
-            else:
-                out_string = ""
-            return (model, clip, out_string,)
-        
-        json_tags_path = "./loras_tags.json"
-        lora_tags = load_json_from_file(json_tags_path)
-        output_tags = lora_tags.get(lora_name, None) if lora_tags is not None else None
-        if output_tags is not None:
-            output_tags = ", ".join(output_tags)
-            if print_tags:
-                    print("trainedWords:",output_tags)
-        else:
-            output_tags = ""
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "clip": ("CLIP",),
+                "lora_name1": (lora_files,),
+                "model_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "clip_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "lora_name2": (lora_files,),
+                "model_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "clip_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "lora_name3": (lora_files,),
+                "model_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "clip_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+            }
+        }
 
-        lora_path = folder_paths.get_full_path("loras", lora_name)
-        if (query_tags and output_tags == "") or force_fetch:
-            print("calculating lora hash")
-            LORAsha256 = calculate_sha256(lora_path)
-            print("requesting infos")
-            model_info = get_model_version_info(LORAsha256)
-            if model_info is not None:
-                if "trainedWords" in model_info:
-                    print("tags found!")
-                    if lora_tags is None:
-                        lora_tags = {}
-                    lora_tags[lora_name] = model_info["trainedWords"]
-                    save_dict_to_json(lora_tags,json_tags_path)
-                    output_tags = ", ".join(model_info["trainedWords"])
-                    if print_tags:
-                        print("trainedWords:",output_tags)
-            else:
-                print("No informations found.")
-                if lora_tags is None:
-                        lora_tags = {}
-                lora_tags[lora_name] = []
-                save_dict_to_json(lora_tags,json_tags_path)
+    RETURN_TYPES = ("MODEL", "CLIP")
 
-        lora = None
-        if self.loaded_lora is not None:
-            if self.loaded_lora[0] == lora_path:
-                lora = self.loaded_lora[1]
-            else:
-                temp = self.loaded_lora
-                self.loaded_lora = None
-                del temp
+    def load_list_lora(self, model, clip, lora_name1, model_strength_1, clip_strength_1,
+                       lora_name2, model_strength_2, clip_strength_2,
+                       lora_name3, model_strength_3, clip_strength_3):
+        loras = []
 
-        if lora is None:
-            lora = load_torch_file(lora_path, safe_load=True)
-            self.loaded_lora = (lora_path, lora)
+        for lora_name, model_strength, clip_strength in [(lora_name1, model_strength_1, clip_strength_1),
+                                                         (lora_name2, model_strength_2, clip_strength_2),
+                                                         (lora_name3, model_strength_3, clip_strength_3)]:
+            if lora_name != "None":
+                lora_path = validate_lora(lora_name)
+                if lora_path:
+                    loras.append((lora_name, model_strength, clip_strength))
 
-        model_lora, clip_lora = load_lora_for_models(model, clip, lora, strength_model, strength_clip)
-        if opt_prompt is not None:
-            if tags_out:
-                output_tags = opt_prompt+", "+output_tags
-            else:
-                output_tags = opt_prompt
-        return (model_lora, clip_lora, output_tags,)
-    
+        if len(loras) == 0:
+            return (model, clip)
+
+        # Load LoRAs
+        return self.load_loras(loras, model, clip)
+
+    def load_loras(self, lora_params, model, clip):
+        """Load the LoRA models into the model and clip."""
+        for lora_name, strength_model, strength_clip in lora_params:
+            lora_path = folder_paths.get_full_path("loras", lora_name)
+            lora_file = comfy.utils.load_torch_file(lora_path)
+            model, clip = comfy.sd.load_lora_for_models(model, clip, lora_file, strength_model, strength_clip)
+        return model, clip
+
+
 NODE_CLASS_MAPPINGS = {
     "LoraListUrlLoader": LoraListUrlLoader,
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "LoraListUrlLoader": "Lora URL List Loader",
 }
