@@ -1,0 +1,14 @@
+[project]
+name = "ComfyUI_Lora_List_With_Url_Loader"
+description = "Nodes:ComfyUI_Lora_List_With_Url_Loader. Load  loras from  urls and auto fetch them on web if they are missing."
+version = "1.0.0"
+license = "LICENSE"
+
+[project.urls]
+Repository = "https://github.com/Extraltodeus/ComfyUI_Lora_List_With_Url_Loader"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "liushuchun"
+DisplayName = "ComfyUI_Lora_List_With_Url_Loader"
+Icon = ""
