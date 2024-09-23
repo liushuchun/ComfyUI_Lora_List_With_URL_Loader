@@ -70,18 +70,17 @@ class AVLoraLoader(LoraLoader):
 class LoraListUrlLoader(AVLoraLoader):
     @classmethod
     def INPUT_TYPES(s):
-        lora_files = ["None"] + folder_paths.get_filename_list("loras")
         return {
             "required": {
                 "model": ("MODEL",),
                 "clip": ("CLIP",),
-                "lora_name1": (lora_files,),
+                "lora_name1": ("STRING", {"forceInput": False}),
                 "model_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
-                "lora_name2": (lora_files,),
+                "lora_name2": ("STRING", {"forceInput": False}),
                 "model_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
-                "lora_name3": (lora_files,),
+                "lora_name3": ("STRING", {"forceInput": False}),
                 "model_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
             }
