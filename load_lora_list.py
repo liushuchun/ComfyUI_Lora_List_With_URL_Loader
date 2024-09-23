@@ -21,7 +21,7 @@ class AVLoraLoader(LoraLoader):
         }
         return inputs
 
-    CATEGORY = "Art Venture/Loaders"
+    CATEGORY = "Liushuchun /Loaders"
 
     def download_file(self, url, save_path):
         """使用 wget 下载文件"""

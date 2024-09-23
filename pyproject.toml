@@ -5,7 +5,7 @@ version = "1.0.0"
 license = "LICENSE"
 
 [project.urls]
-Repository = "https://github.com/Extraltodeus/ComfyUI_Lora_List_With_Url_Loader"
+Repository = "https://github.com/liushuchun/ComfyUI_Lora_List_With_Url_Loader"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
