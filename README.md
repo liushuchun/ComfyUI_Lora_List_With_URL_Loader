@@ -26,3 +26,9 @@ git clone https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader.git
 ```
 
 4. Restart ComfyUI to apply the changes.
+
+## Config
+
+```
+![image](image/README/1727167877711.png)
+```
