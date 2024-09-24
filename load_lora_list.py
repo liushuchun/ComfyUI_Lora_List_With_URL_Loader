@@ -108,13 +108,13 @@ class LoraListUrlLoader(LoraListStacker):
             "required": {
                 "model": ("MODEL",),
                 "clip": ("CLIP",),
-                "lora_url1": ("STRING", {"forceInput": False}),
+                "lora_1_url": ("STRING", {"forceInput": False}),
                 "model_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_1": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
-                "lora_url2": ("STRING", {"forceInput": False}),
+                "lora_2_url": ("STRING", {"forceInput": False}),
                 "model_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_2": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
-                "lora_url3": ("STRING", {"forceInput": False}),
+                "lora_3_url": ("STRING", {"forceInput": False}),
                 "model_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "clip_strength_3": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
             }
@@ -122,21 +122,21 @@ class LoraListUrlLoader(LoraListStacker):
 
     RETURN_TYPES = ("MODEL", "CLIP")
 
-    def load_list_lora(self, model, clip, lora_url1, model_strength_1, clip_strength_1,
-                       lora_url2, model_strength_2, clip_strength_2,
-                       lora_url3, model_strength_3, clip_strength_3):
+    def load_list_lora(self, model, clip, lora_1_url, model_strength_1, clip_strength_1,
+                       lora_2_url, model_strength_2, clip_strength_2,
+                       lora_3_url, model_strength_3, clip_strength_3):
         loras = []
-        if lora_url1 != "":
-            lora_url1 = self.check_and_download_lora(lora_url1)
-            loras.append((lora_url1, model_strength_1, clip_strength_1))
+        if lora_1_url != "":
+            lora_1_url = self.check_and_download_lora(lora_1_url)
+            loras.append((lora_1_url, model_strength_1, clip_strength_1))
 
-        if lora_url2 != "":
-            lora_url2 = self.check_and_download_lora(lora_url2)
-            loras.append((lora_url2, model_strength_2, clip_strength_2))
+        if lora_2_url != "":
+            lora_2_url = self.check_and_download_lora(lora_2_url)
+            loras.append((lora_2_url, model_strength_2, clip_strength_2))
 
-        if lora_url3 != "":
-            lora_url3 = self.check_and_download_lora(lora_url3)
-            loras.append((lora_url3, model_strength_3, clip_strength_3))
+        if lora_3_url != "":
+            lora_3_url = self.check_and_download_lora(lora_3_url)
+            loras.append((lora_3_url, model_strength_3, clip_strength_3))
         print("loaded lora list:",loras)
         if len(loras) == 0:
             return (model, clip)
