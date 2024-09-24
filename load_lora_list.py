@@ -3,6 +3,7 @@ import torch
 import os
 import sys
 import folder_paths
+import requests 
 import wget  # 引入 wget 模块
 from pathlib import Path  # 用于处理文件路径
 
@@ -27,11 +28,15 @@ class LoraListStacker:
     CATEGORY = "Liushuchun /Loaders"
 
     def download_file(self, url, save_path):
-        """使用 wget 下载文件"""
+        """下载文件"""
         try:
-            wget.download(url, save_path)
-            print(f"\nDownloaded: {save_path}")
-        except Exception as e:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            with open(save_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            print(f"Downloaded: {save_path}")
+        except requests.exceptions.RequestException as e:
             print(f"Failed to download {url}: {e}")
             return False
         return True
@@ -44,10 +49,10 @@ class LoraListStacker:
         """如果lora_name是URL，检测并下载模型文件"""
         if lora_name.startswith("http"):
             filename = self.get_lora_filename(lora_name)
-            local_path =   folder_paths.get_full_path("loras", filename)
+            local_path = os.path.join(folder_paths.models_dir,"loras",filename)   
             print("local path",local_path)
             
-            if local_path!="NoneType" or local_path is None or not os.path.exists(local_path):
+            if not os.path.exists(local_path):
                 print(f"File {filename} not found locally. Downloading...")
                 if not self.download_file(lora_name, local_path):
                     raise Exception(f"Failed to download Lora model from {lora_name}")
@@ -132,7 +137,7 @@ class LoraListUrlLoader(LoraListStacker):
         if lora_name3 != "":
             lora_name3 = self.check_and_download_lora(lora_name3)
             loras.append((lora_name3, model_strength_3, clip_strength_3))
-
+        print("loaded lora list:",loras)
         if len(loras) == 0:
             return (model, clip)
 
