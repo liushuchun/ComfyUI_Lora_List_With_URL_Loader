@@ -29,5 +29,5 @@ git clone https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader.git
 
 ## Config
 
-![image](https://github.com/liushuchun/ComfyUI_Lora_List_With_URL_Loader/image/README/1727167877711.png)
+![image](image/README/1727167877711.png)
 
